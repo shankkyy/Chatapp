@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chat</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f1ea;
+      --panel: #fffdf8;
+      --ink: #1c1915;
+      --muted: #6d655c;
+      --line: #e4ddd2;
+      --accent: #0f6e56;
+      --accent-ink: #f4fff9;
+      --mine: #e7f5ef;
+      --system: #8a8178;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font: 16px/1.45 "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+    }
+    .app {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      min-height: 100vh;
+    }
+    aside, main { min-height: 100vh; }
+    aside {
+      border-right: 1px solid var(--line);
+      background: var(--panel);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    h1 { font-size: 1.25rem; margin: 0; }
+    form.stack:not([hidden]),
+    #auth-box:not([hidden]),
+    #session-box:not([hidden]) {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; }
+    select, input, button { font: inherit; }
+    select, input {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: white;
+      border-radius: 8px;
+      padding: 8px 10px;
+    }
+    button {
+      border: 0;
+      border-radius: 8px;
+      padding: 8px 12px;
+      background: var(--accent);
+      color: var(--accent-ink);
+      cursor: pointer;
+    }
+    button.secondary { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+    button:disabled { opacity: 0.5; cursor: default; }
+    .row { display: flex; gap: 8px; }
+    .row input { flex: 1; }
+    ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+    .room {
+      text-align: left;
+      background: transparent;
+      color: var(--ink);
+      border: 1px solid transparent;
+    }
+    .room.active { border-color: var(--accent); background: var(--mine); }
+    main { display: flex; flex-direction: column; }
+    header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    #status { color: var(--muted); font-size: 0.9rem; }
+    #log {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .msg {
+      max-width: 70%;
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 8px 12px;
+    }
+    .msg.mine { align-self: flex-end; background: var(--mine); }
+    .msg strong { display: block; font-size: 0.85rem; }
+    .msg time { display: block; color: var(--muted); font-size: 0.75rem; margin-top: 4px; }
+    .system { align-self: center; color: var(--system); font-size: 0.85rem; }
+    form.composer {
+      display: flex;
+      gap: 8px;
+      padding: 16px 20px 20px;
+      border-top: 1px solid var(--line);
+    }
+    form.composer input { flex: 1; }
+    .error { color: #9b2c2c; font-size: 0.85rem; min-height: 1.2em; }
+    @media (max-width: 720px) {
+      .app { grid-template-columns: 1fr; }
+      aside, main { min-height: auto; }
+      aside { border-right: 0; border-bottom: 1px solid var(--line); }
+      #log { min-height: 50vh; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside>
+      <h1>Rooms</h1>
+      <div id="auth-box">
+        <form id="login-form" class="stack">
+          <div>
+            <label for="login-email">Email</label>
+            <input id="login-email" type="email" autocomplete="username" required>
+          </div>
+          <div>
+            <label for="login-password">Password</label>
+            <input id="login-password" type="password" minlength="8" autocomplete="current-password" required>
+          </div>
+          <button type="submit">Log in</button>
+        </form>
+        <form id="register-form" class="stack" hidden>
+          <div>
+            <label for="register-username">Username</label>
+            <input id="register-username" minlength="3" maxlength="50" required>
+          </div>
+          <div>
+            <label for="register-email">Email</label>
+            <input id="register-email" type="email" autocomplete="email" required>
+          </div>
+          <div>
+            <label for="register-password">Password</label>
+            <input id="register-password" type="password" minlength="8" autocomplete="new-password" required>
+          </div>
+          <button type="submit">Create account</button>
+        </form>
+        <button id="auth-toggle" class="secondary" type="button">Need an account?</button>
+        <p id="auth-error" class="error"></p>
+      </div>
+      <div id="session-box" hidden>
+        <div>Signed in as <strong id="session-name"></strong></div>
+        <button id="logout" class="secondary" type="button">Log out</button>
+      </div>
+      <form id="new-room" class="row">
+        <input id="room-name" maxlength="80" placeholder="New room" required>
+        <button type="submit">Add</button>
+      </form>
+      <p id="side-error" class="error"></p>
+      <ul id="rooms"></ul>
+    </aside>
+    <main>
+      <header>
+        <div>
+          <strong id="room-title">Pick a room</strong>
+          <div id="status">Not connected</div>
+        </div>
+        <button id="leave" class="secondary" type="button" disabled>Leave</button>
+      </header>
+      <div id="log"></div>
+      <form id="composer" class="composer">
+        <input id="draft" maxlength="2000" placeholder="Write a message" disabled>
+        <button id="send" type="submit" disabled>Send</button>
+      </form>
+    </main>
+  </div>
+  <script>
+    const roomsEl = document.querySelector("#rooms");
+    const sideError = document.querySelector("#side-error");
+    const roomTitle = document.querySelector("#room-title");
+    const statusEl = document.querySelector("#status");
+    const logEl = document.querySelector("#log");
+    const leaveBtn = document.querySelector("#leave");
+    const draftEl = document.querySelector("#draft");
+    const sendBtn = document.querySelector("#send");
+    const loginForm = document.querySelector("#login-form");
+    const registerForm = document.querySelector("#register-form");
+    const authBox = document.querySelector("#auth-box");
+    const sessionBox = document.querySelector("#session-box");
+    const sessionName = document.querySelector("#session-name");
+    const authError = document.querySelector("#auth-error");
+    const authToggle = document.querySelector("#auth-toggle");
+    const STORAGE_KEY = "chat-auth";
+    let socket = null;
+    let activeRoom = null;
+    let myUserId = null;
+    let session = null;
+    let showingRegister = false;
+
+    function setStatus(text) {
+      statusEl.textContent = text;
+    }
+
+    function showError(text) {
+      sideError.textContent = text || "";
+    }
+
+    function appendSystem(text) {
+      const line = document.createElement("div");
+      line.className = "system";
+      line.textContent = text;
+      logEl.append(line);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function appendMessage(message) {
+      const block = document.createElement("article");
+      block.className = "msg" + (Number(message.user_id) === Number(myUserId) ? " mine" : "");
+      const who = document.createElement("strong");
+      who.textContent = message.username || "User " + message.user_id;
+      const body = document.createElement("div");
+      body.textContent = message.content;
+      const time = document.createElement("time");
+      time.dateTime = message.created_at || "";
+      time.textContent = message.created_at ? new Date(message.created_at).toLocaleString() : "";
+      block.append(who, body, time);
+      logEl.append(block);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function errorText(body) {
+      if (!body) return "Request failed";
+      if (typeof body.detail === "string") return body.detail;
+      if (Array.isArray(body.detail)) return body.detail.map((item) => item.msg).join(" ");
+      return "Request failed";
+    }
+
+    function showAuthError(text) {
+      authError.textContent = text || "";
+    }
+
+    function renderAuth() {
+      const signedIn = Boolean(session && session.access_token);
+      authBox.hidden = signedIn;
+      sessionBox.hidden = !signedIn;
+      sessionName.textContent = signedIn ? session.user.username : "";
+      loginForm.hidden = showingRegister;
+      registerForm.hidden = !showingRegister;
+      authToggle.textContent = showingRegister ? "Have an account?" : "Need an account?";
+    }
+
+    function saveSession(next) {
+      session = next;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      myUserId = next.user.id;
+      renderAuth();
+    }
+
+    function clearSession() {
+      session = null;
+      myUserId = null;
+      localStorage.removeItem(STORAGE_KEY);
+      closeSocket();
+      activeRoom = null;
+      roomTitle.textContent = "Pick a room";
+      renderAuth();
+    }
+
+    function setConnected(connected) {
+      draftEl.disabled = !connected;
+      sendBtn.disabled = !connected;
+      leaveBtn.disabled = !connected;
+      if (connected) draftEl.focus();
+    }
+
+    function closeSocket() {
+      if (socket) {
+        socket.onclose = null;
+        socket.close();
+        socket = null;
+      }
+      setConnected(false);
+      setStatus("Not connected");
+    }
+
+    async function loadRooms() {
+      const response = await fetch("/api/chat/rooms");
+      const rooms = await response.json();
+      roomsEl.replaceChildren();
+      if (!response.ok) {
+        showError(typeof rooms.detail === "string" ? rooms.detail : "Could not load rooms");
+        return;
+      }
+      showError("");
+      if (!rooms.length) {
+        const empty = document.createElement("li");
+        empty.textContent = "No rooms yet.";
+        roomsEl.append(empty);
+        return;
+      }
+      for (const room of rooms) {
+        const item = document.createElement("li");
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "room" + (activeRoom && activeRoom.id === room.id ? " active" : "");
+        button.textContent = room.name;
+        button.addEventListener("click", () => joinRoom(room));
+        item.append(button);
+        roomsEl.append(item);
+      }
+    }
+
+    function joinRoom(room) {
+      if (!session || !session.access_token) {
+        showError("Log in before joining a room.");
+        return;
+      }
+      closeSocket();
+      activeRoom = room;
+      myUserId = session.user.id;
+      roomTitle.textContent = room.name;
+      logEl.replaceChildren();
+      setStatus("Connecting…");
+      loadRooms();
+
+      const protocol = location.protocol === "https:" ? "wss" : "ws";
+      const token = encodeURIComponent(session.access_token);
+      socket = new WebSocket(`${protocol}://${location.host}/ws/chat/${room.id}?token=${token}`);
+      socket.onopen = () => {
+        setConnected(true);
+        setStatus("Connected");
+      };
+      socket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === "history") {
+          logEl.replaceChildren();
+          data.messages.forEach(appendMessage);
+          if (!data.messages.length) appendSystem("No messages yet.");
+        } else if (data.type === "message") {
+          appendMessage(data);
+        } else if (data.type === "presence") {
+          const verb = data.event === "join" ? "joined" : "left";
+          appendSystem(`${data.username} ${verb} · ${data.online} online`);
+        } else if (data.type === "error") {
+          appendSystem(data.detail);
+        }
+      };
+      socket.onclose = () => {
+        socket = null;
+        setConnected(false);
+        setStatus("Disconnected");
+      };
+      socket.onerror = () => setStatus("Connection failed");
+    }
+
+    document.querySelector("#new-room").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const name = document.querySelector("#room-name").value.trim();
+      if (!name) return;
+      const response = await fetch("/api/chat/rooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const room = await response.json();
+      if (!response.ok) {
+        showError(typeof room.detail === "string" ? room.detail : "Could not create room");
+        return;
+      }
+      document.querySelector("#room-name").value = "";
+      await loadRooms();
+      joinRoom(room);
+    });
+
+    document.querySelector("#composer").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const content = draftEl.value.trim();
+      if (!content || !socket || socket.readyState !== WebSocket.OPEN) return;
+      socket.send(JSON.stringify({ content }));
+      draftEl.value = "";
+    });
+
+    leaveBtn.addEventListener("click", () => {
+      closeSocket();
+      activeRoom = null;
+      roomTitle.textContent = "Pick a room";
+      loadRooms();
+    });
+
+    authToggle.addEventListener("click", () => {
+      showingRegister = !showingRegister;
+      showAuthError("");
+      renderAuth();
+    });
+
+    loginForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      showAuthError("");
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: document.querySelector("#login-email").value.trim(),
+          password: document.querySelector("#login-password").value,
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        showAuthError(errorText(body));
+        return;
+      }
+      saveSession(body);
+      document.querySelector("#login-password").value = "";
+    });
+
+    registerForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      showAuthError("");
+      const response = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: document.querySelector("#register-username").value.trim(),
+          email: document.querySelector("#register-email").value.trim(),
+          password: document.querySelector("#register-password").value,
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        showAuthError(errorText(body));
+        return;
+      }
+      if (body.confirmation_required || !body.access_token) {
+        showingRegister = false;
+        renderAuth();
+        document.querySelector("#login-email").value = body.user.email;
+        showAuthError("Account created. Confirm your email, then log in.");
+        return;
+      }
+      saveSession(body);
+      document.querySelector("#register-password").value = "";
+    });
+
+    document.querySelector("#logout").addEventListener("click", async () => {
+      if (session && session.access_token) {
+        await fetch("/api/auth/logout", {
+          method: "POST",
+          headers: { Authorization: "Bearer " + session.access_token },
+        });
+      }
+      clearSession();
+      loadRooms();
+    });
+
+    async function restoreSession() {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (!saved) {
+        renderAuth();
+        return;
+      }
+      try {
+        session = JSON.parse(saved);
+      } catch {
+        clearSession();
+        return;
+      }
+      const response = await fetch("/api/auth/me", {
+        headers: { Authorization: "Bearer " + session.access_token },
+      });
+      if (!response.ok) {
+        clearSession();
+        return;
+      }
+      session.user = await response.json();
+      saveSession(session);
+    }
+
+    restoreSession().then(loadRooms).catch((error) => showError(error.message));
+  </script>
+</body>
+</html>
